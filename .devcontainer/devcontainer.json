@@ -32,6 +32,21 @@
                 "python.formatting.provider": "none",
                 "[python]": {
                     "editor.defaultFormatter": "ms-python.black-formatter"
+                },
+                "python.analysis.indexing": false,
+                "python.analysis.diagnosticMode": "openFilesOnly",
+                "python.analysis.exclude": [
+                    "**/site-packages/**",
+                    "**/node_modules/**",
+                    "**/__pycache__/**"
+                ],
+                "python.analysis.typeCheckingMode": "basic",
+                "python.analysis.memory.keepLibraryAst": false,
+                "github.copilot.enable": {
+                    "*": true,
+                    "plaintext": true,
+                    "markdown": true,
+                    "python": true
                 }
             }
         }
@@ -43,6 +58,11 @@
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONUNBUFFERED": "1"
     },
+    
+    "runArgs": [
+        "--memory=4g",
+        "--memory-swap=4g"
+    ],
     
     "mounts": [
         "source=${localEnv:HOME}${localEnv:USERPROFILE}/.azure,target=/home/vscode/.azure,type=bind,consistency=cached"
