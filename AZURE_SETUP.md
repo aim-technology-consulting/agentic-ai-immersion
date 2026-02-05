@@ -164,6 +164,12 @@ OPENAI_API_KEY=$(az cognitiveservices account keys list \
   --resource-group $RESOURCE_GROUP \
   --query key1 -o tsv)
 
+# Get OpenAI resource ID for creating connection
+OPENAI_RESOURCE_ID=$(az cognitiveservices account show \
+  --name $OPENAI_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query id -o tsv)
+
 echo "✅ Azure OpenAI created: $OPENAI_NAME"
 echo "Endpoint: $OPENAI_ENDPOINT"
 ```
@@ -203,6 +209,81 @@ az cognitiveservices account deployment create \
   --model-format OpenAI \
   --sku-capacity 10 \
   --sku-name "Standard"
+
+echo "✅ Models deployed: gpt-4o, gpt-4o-mini, text-embedding-3-large"
+```
+
+### Connect Azure OpenAI to AI Foundry Project
+
+**CRITICAL:** After deploying the Azure OpenAI service and models, you must create a connection in the AI Foundry Project to make the models accessible to agents.
+
+```bash
+# Create Azure OpenAI connection in AI Foundry Project using Python SDK
+cat > connect_openai_to_project.py << 'EOFPYTHON'
+import os
+from azure.ai.ml import MLClient
+from azure.ai.ml.entities import AzureOpenAIConnection
+from azure.identity import DefaultAzureCredential
+
+# Get credentials and project details
+credential = DefaultAzureCredential()
+subscription_id = os.getenv("SUBSCRIPTION_ID")
+resource_group = os.getenv("RESOURCE_GROUP")
+project_name = os.getenv("AI_PROJECT_NAME")
+openai_endpoint = os.getenv("OPENAI_ENDPOINT")
+openai_key = os.getenv("OPENAI_API_KEY")
+openai_resource_id = os.getenv("OPENAI_RESOURCE_ID")
+
+# Initialize ML Client for the project
+ml_client = MLClient(
+    credential=credential,
+    subscription_id=subscription_id,
+    resource_group_name=resource_group,
+    workspace_name=project_name
+)
+
+# Create Azure OpenAI connection
+connection = AzureOpenAIConnection(
+    name="azure-openai-connection",
+    endpoint=openai_endpoint,
+    api_key=openai_key,
+    api_version="2024-08-01-preview",
+    azure_openai_resource_id=openai_resource_id
+)
+
+# Create or update the connection
+try:
+    created_connection = ml_client.connections.create_or_update(connection)
+    print(f"✅ Successfully created Azure OpenAI connection: {created_connection.name}")
+    print(f"   Connection ID: {created_connection.id}")
+except Exception as e:
+    print(f"❌ Error creating connection: {e}")
+    exit(1)
+EOFPYTHON
+
+# Run the connection script
+python3 connect_openai_to_project.py
+
+# Clean up
+rm connect_openai_to_project.py
+
+echo "✅ Azure OpenAI connected to AI Foundry Project"
+echo "   Agents can now access models: gpt-4o, gpt-4o-mini, text-embedding-3-large"
+```
+
+**Alternative: Manual Connection via Azure AI Foundry Portal**
+
+If the script fails, you can create the connection manually:
+
+1. Navigate to [Azure AI Foundry Portal](https://ai.azure.com)
+2. Select your project: **$AI_PROJECT_NAME**
+3. Go to **Settings** → **Connections**
+4. Click **+ New Connection** → **Azure OpenAI**
+5. Fill in:
+   - **Name:** `azure-openai-connection`
+   - **Subscription:** Your subscription
+   - **Azure OpenAI resource:** Select **$OPENAI_NAME**
+6. Click **Add connection**
 
 echo "✅ Models deployed: gpt-4o, gpt-4o-mini, text-embedding-3-large"
 ```
@@ -561,6 +642,14 @@ echo "🗑️  Resource group deletion initiated: $RESOURCE_GROUP"
 ---
 
 ## 🔧 Troubleshooting
+
+### "Not Found" Error When Creating Agents
+If you get `Operation returned an invalid status 'Not Found'` when creating agents:
+```bash
+# This means Azure OpenAI is not connected to the AI Foundry Project
+# Re-run the connection script from Step 4 (Connect Azure OpenAI to AI Foundry Project)
+# OR create the connection manually via the AI Foundry Portal (ai.azure.com)
+```
 
 ### AI Foundry Hub Creation Issues
 If `az ml` extension installation fails:
