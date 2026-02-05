@@ -1,6 +1,9 @@
 {
     "name": "Agentic AI Immersion Day",
-    "image": "mcr.microsoft.com/devcontainers/python:3.12",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
     
     "features": {
         "ghcr.io/devcontainers/features/azure-cli:1": {},
@@ -42,17 +45,44 @@
                 ],
                 "python.analysis.typeCheckingMode": "basic",
                 "python.analysis.memory.keepLibraryAst": false,
+                "python.analysis.autoImportCompletions": false,
+                "python.analysis.packageIndexDepths": [
+                    {"name": "", "depth": 1}
+                ],
                 "github.copilot.enable": {
                     "*": true,
                     "plaintext": true,
                     "markdown": true,
                     "python": true
+                },
+                "github.copilot.editor.enableAutoCompletions": true,
+                "github.copilot.advanced": {
+                    "debug.overrideEngine": "",
+                    "debug.testOverrideProxyUrl": "",
+                    "debug.overrideProxyUrl": ""
+                },
+                "files.exclude": {
+                    "**/__pycache__": true,
+                    "**/.pytest_cache": true,
+                    "**/*.pyc": true
+                },
+                "search.exclude": {
+                    "**/site-packages": true,
+                    "**/.venv": true,
+                    "**/venv": true
+                },
+                "files.watcherExclude": {
+                    "**/__pycache__/**": true,
+                    "**/site-packages/**": true,
+                    "**/.venv/**": true
                 }
             }
         }
     },
     
-    "postCreateCommand": "pip install --upgrade pip && pip install -r requirements.txt",
+    "postCreateCommand": "echo 'Container ready!'",
+    
+    "updateContentCommand": "pip install --upgrade --no-cache-dir -r requirements.txt",
     
     "containerEnv": {
         "PYTHONDONTWRITEBYTECODE": "1",
@@ -60,8 +90,9 @@
     },
     
     "runArgs": [
-        "--memory=4g",
-        "--memory-swap=4g"
+        "--memory=16g",
+        "--memory-swap=24g",
+        "--cpus=4"
     ],
     
     "mounts": [
