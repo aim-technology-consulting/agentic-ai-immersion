@@ -466,6 +466,7 @@ AZURE_PROJECT_NAME=$($Project.Name)
 # Microsoft Foundry PROJECT
 # =============================================================================
 AI_FOUNDRY_PROJECT_ENDPOINT=$($Project.Endpoint)
+AZURE_AI_PROJECT_ENDPOINT=$($Project.Endpoint)
 PROJECT_RESOURCE_ID=$($Project.ResourceId)
 
 # =============================================================================
