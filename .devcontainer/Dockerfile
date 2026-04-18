@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     gnupg \
     lsb-release \
+    xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================================================
@@ -61,6 +62,16 @@ RUN pip install --upgrade pip \
 RUN az config set extension.use_dynamic_install=no 2>/dev/null || true \
     && /opt/az/bin/python3 -m pip install --no-cache-dir rpds-py
 
+# ============================================================================
+# Pre-register Jupyter kernel so VS Code never prompts for kernel source
+# ============================================================================
+RUN python -m ipykernel install --name python3 --display-name "Python 3"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     AZURE_EXTENSION_USE_DYNAMIC_INSTALL=no
+
+# ============================================================================
+# Azure login check on every terminal open
+# ============================================================================
+RUN printf '\nif [ -t 0 ] && ! az account show > /dev/null 2>&1; then\n  echo ""\n  echo "🔐 Logging in to Azure..."\n  echo ""\n  az login\nfi\n' >> /home/vscode/.bashrc
