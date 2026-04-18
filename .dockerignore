@@ -1,0 +1,3 @@
+# Only send requirements.txt to Docker build context
+**
+!requirements.txt
