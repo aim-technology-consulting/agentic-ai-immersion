@@ -14,7 +14,7 @@
                 "python.terminal.activateEnvironment": true,
                 "jupyter.askForKernelRestart": false,
                 "jupyter.kernelProviderSettings": {},
-                "notebook.kernelPickerType": "mru",
+                "notebook.kernelPickerType": "all",
                 "editor.formatOnSave": true,
                 "python.formatting.provider": "none",
                 "[python]": {
