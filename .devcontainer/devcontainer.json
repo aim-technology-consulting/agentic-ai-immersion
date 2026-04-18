@@ -37,11 +37,13 @@
         }
     },
     
-    "postCreateCommand": "pip install --upgrade pip && pip install -r requirements.txt",
+    "postCreateCommand": "pip install --upgrade pip && pip install -r requirements.txt && az config set extension.use_dynamic_install=no",
+    "postStartCommand": "az config set extension.use_dynamic_install=no",
     
     "containerEnv": {
         "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONUNBUFFERED": "1",
+        "AZURE_EXTENSION_USE_DYNAMIC_INSTALL": "no"
     },
     
     "mounts": [
