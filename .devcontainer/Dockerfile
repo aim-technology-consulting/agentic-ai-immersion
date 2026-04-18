@@ -70,8 +70,3 @@ RUN python -m ipykernel install --name python3 --display-name "Python 3"
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     AZURE_EXTENSION_USE_DYNAMIC_INSTALL=no
-
-# ============================================================================
-# Azure login check on every terminal open
-# ============================================================================
-RUN printf '\nif [ -t 0 ] && ! az account show > /dev/null 2>&1; then\n  if mkdir /tmp/.az-login-lock 2>/dev/null; then\n    echo ""\n    echo "🔐 Setting up for Azure..."\n    echo ""\n    for _i in 1 2 3 4 5 6; do\n      sleep 2\n      [ -n "${VSCODE_IPC_HOOK_CLI:-}" ] && [ -S "$VSCODE_IPC_HOOK_CLI" ] && break\n    done\n    unset _i\n    az login\n    rmdir /tmp/.az-login-lock 2>/dev/null\n  fi\nfi\n' >> /home/vscode/.bashrc
