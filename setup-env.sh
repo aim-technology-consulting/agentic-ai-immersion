@@ -381,6 +381,66 @@ get_mcp_connection() {
     fi
 }
 
+# Function to create a shared Service Principal for non-Entra participant access
+configure_service_principal() {
+    print_step "Service Principal for non-Entra participant access (optional)..."
+    read -p "  Create a shared Service Principal so participants don't need az login? (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_warning "Skipping Service Principal creation"
+        AZURE_CLIENT_ID=""
+        AZURE_CLIENT_SECRET=""
+        return
+    fi
+
+    local default_name="ai-immersion-workshop-sp"
+    read -p "  App display name (Enter for '$default_name'): " SP_NAME
+    if [ -z "$SP_NAME" ]; then SP_NAME="$default_name"; fi
+
+    echo "  Creating app registration..." >&2
+    AZURE_CLIENT_ID=$(az ad app create --display-name "$SP_NAME" --query appId -o tsv)
+    print_success "App registered: $SP_NAME ($AZURE_CLIENT_ID)"
+
+    echo "  Creating service principal..." >&2
+    local sp_object_id
+    sp_object_id=$(az ad sp create --id "$AZURE_CLIENT_ID" --query id -o tsv)
+    print_success "Service principal created"
+
+    local default_expiry
+    default_expiry=$(date -v+5d +%Y-%m-%d 2>/dev/null || date -d "+5 days" +%Y-%m-%d)
+    read -p "  Secret expiry date (Enter for '$default_expiry'): " EXPIRY_DATE
+    if [ -z "$EXPIRY_DATE" ]; then EXPIRY_DATE="$default_expiry"; fi
+    echo "  Generating client secret (expires $EXPIRY_DATE)..." >&2
+    AZURE_CLIENT_SECRET=$(az ad app credential reset \
+        --id "$AZURE_CLIENT_ID" --end-date "$EXPIRY_DATE" --append --query password -o tsv)
+    print_success "Client secret generated"
+
+    local account_scope="${PROJECT_RESOURCE_ID%/projects/*}"
+    local project_scope="$PROJECT_RESOURCE_ID"
+    local rg_scope="/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$AZURE_RESOURCE_GROUP"
+
+    echo "  Waiting 15s for SP propagation before role assignments..." >&2
+    sleep 15
+
+    # Cognitive Services User must be assigned at both account and project scope.
+    # The project endpoint enforces its own RBAC check independently of the account.
+    az role assignment create --role "Cognitive Services User" --assignee-object-id "$sp_object_id" --assignee-principal-type ServicePrincipal --scope "$account_scope" --output none 2>/dev/null || true
+    print_success "Role assigned: Cognitive Services User (account)"
+    az role assignment create --role "Cognitive Services User" --assignee-object-id "$sp_object_id" --assignee-principal-type ServicePrincipal --scope "$project_scope" --output none 2>/dev/null || true
+    print_success "Role assigned: Cognitive Services User (project)"
+
+    if [ -n "$AZURE_AI_SEARCH_ENDPOINT" ] && [ "$AZURE_AI_SEARCH_ENDPOINT" != "<your-search-endpoint>" ]; then
+        az role assignment create --role "Search Index Data Reader" --assignee-object-id "$sp_object_id" --assignee-principal-type ServicePrincipal --scope "$rg_scope" --output none 2>/dev/null || true
+        print_success "Role assigned: Search Index Data Reader"
+        az role assignment create --role "Search Index Data Contributor" --assignee-object-id "$sp_object_id" --assignee-principal-type ServicePrincipal --scope "$rg_scope" --output none 2>/dev/null || true
+        print_success "Role assigned: Search Index Data Contributor"
+    fi
+
+    echo ""
+    print_warning "IMPORTANT: Delete this SP after the workshop: az ad app delete --id $AZURE_CLIENT_ID"
+    echo ""
+}
+
 # Function to create .env file
 create_env_file() {
     print_step "Creating .env file..."
@@ -471,6 +531,22 @@ ENABLE_SENSITIVE_DATA=true
 # ENABLE_CONSOLE_EXPORTERS=true
 EOF
 
+    if [ -n "$AZURE_CLIENT_ID" ] && [ -n "$AZURE_CLIENT_SECRET" ]; then
+        cat >> .env << EOF
+
+# =============================================================================
+# SERVICE PRINCIPAL — non-Entra participant access (replaces az login)
+# =============================================================================
+# Participants with these three vars set do not need to run az login.
+# DefaultAzureCredential picks them up automatically via EnvironmentCredential.
+# DELETE AFTER WORKSHOP: az ad app delete --id $AZURE_CLIENT_ID
+# =============================================================================
+AZURE_CLIENT_ID=$AZURE_CLIENT_ID
+AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET
+AZURE_TENANT_ID=$TENANT_ID
+EOF
+    fi
+
     print_success ".env file created successfully!"
     echo ""
     echo "📋 Summary of configured values:"
@@ -498,6 +574,7 @@ main() {
     get_search_details
     get_bing_connection
     get_mcp_connection
+    configure_service_principal
     create_env_file
 
     print_success "Setup complete! You can now run the notebooks."

@@ -157,8 +157,8 @@ function Set-WorkshopRbac {
     )
 
     Write-Step "Assigning Azure RBAC roles (optional)..."
-    $include = Read-Host "  Configure RBAC role assignments now? (y/n)"
-    if ($include -notmatch "^[Yy]$") {
+    $include = Read-Host "  Configure RBAC role assignments now? (Y/n)"
+    if ($include -match "^[Nn]$") {
         Write-Warn "Skipping RBAC role assignment"
         return
     }
@@ -190,8 +190,8 @@ function Set-WorkshopRbac {
     }
 
     if (-not [string]::IsNullOrWhiteSpace($ProjectManagedIdentityPrincipalId)) {
-        $assignMi = Read-Host "  Assign 'Search Index Data Reader' to project managed identity (recommended, notebook 8)? (y/n)"
-        if ($assignMi -match "^[Yy]$") {
+        $assignMi = Read-Host "  Assign 'Search Index Data Reader' to project managed identity (recommended, notebook 8)? (Y/n)"
+        if ($assignMi -notmatch "^[Nn]$") {
             Ensure-RoleAssignment -RoleName "Search Index Data Reader" -AssigneeObjectId $ProjectManagedIdentityPrincipalId -AssigneePrincipalType "ServicePrincipal" -Scope $scope
         }
     }
@@ -260,8 +260,8 @@ function Get-SubscriptionInfo {
     Write-Success "Logged in"
     Write-Host "  Current subscription: $($account.name)" -ForegroundColor Cyan
 
-    $confirm = Read-Host "  Use this subscription? (y/n)"
-    if ($confirm -notmatch "^[Yy]$") {
+    $confirm = Read-Host "  Use this subscription? (Y/n)"
+    if ($confirm -match "^[Nn]$") {
         $subs = Invoke-AzJson @("account", "list",
             "--query", "[].{id:id, name:name}")
         for ($i = 0; $i -lt $subs.Count; $i++) {
@@ -587,8 +587,8 @@ function New-SearchService {
     param([string]$ResourceGroup, [string]$Location, [string]$SubId, [string]$ProjectResourceId)
 
     Write-Step "Azure AI Search (optional)..."
-    $include = Read-Host "  Create an Azure AI Search service? (y/n)"
-    if ($include -notmatch "^[Yy]$") {
+    $include = Read-Host "  Create an Azure AI Search service? (Y/n)"
+    if ($include -match "^[Nn]$") {
         Write-Warn "Skipping Azure AI Search"
         return @{
             Endpoint   = "<your-search-endpoint>"
@@ -680,8 +680,8 @@ function New-BingConnection {
     param([string]$ResourceGroup, [string]$Location, [string]$SubId, [string]$ProjectResourceId)
 
     Write-Step "Bing Search grounding (optional)..."
-    $include = Read-Host "  Create a Bing Search resource and connection? (y/n)"
-    if ($include -notmatch "^[Yy]$") {
+    $include = Read-Host "  Create a Bing Search resource and connection? (Y/n)"
+    if ($include -match "^[Nn]$") {
         Write-Warn "Skipping Bing Search"
         return @{
             ConnectionName = "<your-bing-connection-name>"
@@ -700,15 +700,18 @@ function New-BingConnection {
     $bingBody = "{`"location`":`"global`",`"kind`":`"Bing.Grounding`",`"sku`":{`"name`":`"G1`"},`"properties`":{}}"
     Invoke-AzRestJson -Method "PUT" -Url $bingUrl -Body $bingBody -ApiVersion "2025-05-01-preview" | Out-Null
 
-    $bingKey = (Invoke-AzRestJsonObject -Method "POST" -Url "https://management.azure.com/subscriptions/$SubId/resourceGroups/$ResourceGroup/providers/Microsoft.Bing/accounts/$name/listKeys" -ApiVersion "2025-05-01-preview").key1
+    $bingKeysObj = Invoke-AzRestJsonObject -Method "POST" -Url "https://management.azure.com/subscriptions/$SubId/resourceGroups/$ResourceGroup/providers/Microsoft.Bing/accounts/$name/listKeys" -ApiVersion "2025-05-01-preview"
+    $bingKey = "$($bingKeysObj.key1)".Trim()
+    if ([string]::IsNullOrWhiteSpace($bingKey)) { throw "Failed to retrieve Bing API key" }
 
     # Register as connection in the Foundry project
     $connName = "bing-$name"
     $connUrl = "https://management.azure.com$ProjectResourceId/connections/$connName"
     $connBody = "{`"properties`":{`"category`":`"GroundingWithBingSearch`",`"target`":`"https://api.bing.microsoft.com`",`"authType`":`"ApiKey`",`"credentials`":{`"key`":`"$bingKey`"}}}"
 
-    $conn = (Invoke-AzRestWithRetry -Method "PUT" -Url $connUrl -Body $connBody -ApiVersion "2025-04-01-preview") | ConvertFrom-Json
-    $connId = $conn.id
+    $connObj = (Invoke-AzRestWithRetry -Method "PUT" -Url $connUrl -Body $connBody -ApiVersion "2025-04-01-preview") | ConvertFrom-Json
+    $connId = "$($connObj.id)".Trim()
+    if ([string]::IsNullOrWhiteSpace($connId)) { throw "Failed to retrieve Bing connection ID" }
 
     Write-Success "Bing connection '$connName' created"
     return @{
@@ -718,14 +721,111 @@ function New-BingConnection {
 }
 
 # ---------------------------------------------------------------------------
-# STEP 8 — Write .env
+# STEP 8 — Service Principal for non-Entra participant access (optional)
+# ---------------------------------------------------------------------------
+function New-WorkshopServicePrincipal {
+    param(
+        [string]$SubId,
+        [string]$ResourceGroup,
+        [string]$TenantId,
+        [string]$ProjectResourceId,
+        [bool]$HasSearch
+    )
+
+    Write-Step "Service Principal for non-Entra participant access (optional)..."
+    $include = Read-Host "  Create a shared Service Principal so participants don't need az login? (Y/n)"
+    if ($include -match "^[Nn]$") {
+        Write-Warn "Skipping Service Principal creation"
+        return $null
+    }
+
+    $default = "ai-immersion-workshop-sp"
+    $spName = Read-Host "  App display name (Enter for '$default')"
+    if ([string]::IsNullOrWhiteSpace($spName)) { $spName = $default }
+
+    Write-Host "  Creating app registration..." -ForegroundColor DarkGray
+    $appId = "$(az ad app create --display-name $spName --query appId -o tsv 2>$null)".Trim()
+    if ([string]::IsNullOrWhiteSpace($appId)) { throw "Failed to create app registration" }
+    Write-Success "App registered: $spName ($appId)"
+
+    Write-Host "  Creating service principal..." -ForegroundColor DarkGray
+    $spObjectId = "$(az ad sp create --id $appId --query id -o tsv 2>$null)".Trim()
+    if ([string]::IsNullOrWhiteSpace($spObjectId)) {
+        # SP may already exist from a prior partial run — retrieve it
+        $spObjectId = "$(az ad sp show --id $appId --query id -o tsv 2>$null)".Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($spObjectId)) { throw "Failed to create or find service principal" }
+    Write-Success "Service principal ready"
+
+    $defaultExpiry = (Get-Date).AddDays(5).ToString("yyyy-MM-dd")
+    $expiryDate = Read-Host "  Secret expiry date (Enter for '$defaultExpiry')"
+    if ([string]::IsNullOrWhiteSpace($expiryDate)) { $expiryDate = $defaultExpiry }
+    Write-Host "  Generating client secret (expires $expiryDate)..." -ForegroundColor DarkGray
+    $secret = "$(az ad app credential reset --id $appId --end-date $expiryDate --append --query password -o tsv 2>$null)".Trim()
+    if ([string]::IsNullOrWhiteSpace($secret)) { throw "Failed to create client secret" }
+    Write-Success "Client secret generated"
+
+    # Derive account and project scopes from the project resource ID.
+    # The project endpoint enforces its own RBAC check, so both scopes are required.
+    $accountScope = $ProjectResourceId -replace '/projects/[^/]+$', ''
+    $projectScope = $ProjectResourceId
+    $rgScope = "/subscriptions/$SubId/resourceGroups/$ResourceGroup"
+
+    Write-Host "  Waiting 15s for SP propagation before role assignments..." -ForegroundColor DarkGray
+    Start-Sleep -Seconds 15
+
+    $scopedRoles = @(
+        @{ Role = "Cognitive Services User"; Scope = $accountScope; Label = "account" },
+        @{ Role = "Cognitive Services User"; Scope = $projectScope; Label = "project" }
+    )
+    if ($HasSearch) {
+        $scopedRoles += @{ Role = "Search Index Data Reader";    Scope = $rgScope; Label = "resource group" }
+        $scopedRoles += @{ Role = "Search Index Data Contributor"; Scope = $rgScope; Label = "resource group" }
+    }
+
+    foreach ($ra in $scopedRoles) {
+        try {
+            Invoke-Az @(
+                "role", "assignment", "create",
+                "--role", $ra.Role,
+                "--assignee-object-id", $spObjectId,
+                "--assignee-principal-type", "ServicePrincipal",
+                "--scope", $ra.Scope
+            ) | Out-Null
+            Write-Success "Role assigned: $($ra.Role) ($($ra.Label))"
+        }
+        catch {
+            $msg = $_.Exception.Message
+            if ($msg -match "RoleAssignmentExists|already exists") {
+                Write-Host "    Role already assigned: $($ra.Role) ($($ra.Label))" -ForegroundColor DarkGray
+            }
+            else {
+                Write-Warn "Could not assign '$($ra.Role)': $msg"
+            }
+        }
+    }
+
+    Write-Host ""
+    Write-Warn "IMPORTANT: Delete this SP after the workshop: az ad app delete --id $appId"
+    Write-Host ""
+
+    return @{
+        AppId    = $appId
+        Secret   = $secret
+        TenantId = $TenantId
+    }
+}
+
+# ---------------------------------------------------------------------------
+# STEP 9 — Write .env
 # ---------------------------------------------------------------------------
 function Write-EnvFile {
     param(
         [string]$TenantId, [string]$SubId, [string]$ResourceGroup,
         [hashtable]$Account, [hashtable]$Project, [hashtable]$Models,
         [hashtable]$Search, [hashtable]$Bing,
-        [string]$ApiKey
+        [string]$ApiKey,
+        [hashtable]$ServicePrincipal = $null
     )
 
     $envPath = Join-Path $PSScriptRoot ".env"
@@ -802,6 +902,22 @@ ENABLE_SENSITIVE_DATA=true
 # ENABLE_CONSOLE_EXPORTERS=true
 "@ | Set-Content -Path $envPath -Encoding utf8
 
+    if ($ServicePrincipal) {
+        @"
+
+# =============================================================================
+# SERVICE PRINCIPAL — non-Entra participant access (replaces az login)
+# =============================================================================
+# Participants with these three vars set do not need to run az login.
+# DefaultAzureCredential picks them up automatically via EnvironmentCredential.
+# DELETE AFTER WORKSHOP: az ad app delete --id $($ServicePrincipal.AppId)
+# =============================================================================
+AZURE_CLIENT_ID=$($ServicePrincipal.AppId)
+AZURE_CLIENT_SECRET=$($ServicePrincipal.Secret)
+AZURE_TENANT_ID=$($ServicePrincipal.TenantId)
+"@ | Add-Content -Path $envPath -Encoding utf8
+    }
+
     Write-Success ".env written to $envPath"
 }
 
@@ -847,10 +963,15 @@ function Main {
         -SubId $subId -ResourceGroup $rg.Name `
         -ProjectManagedIdentityPrincipalId $project.ManagedIdentityPrincipalId
 
+    $hasSearch = $search.Endpoint -ne "<your-search-endpoint>"
+    $sp = New-WorkshopServicePrincipal `
+        -SubId $subId -ResourceGroup $rg.Name `
+        -TenantId $tenantId -ProjectResourceId $project.ResourceId -HasSearch $hasSearch
+
     Write-EnvFile `
         -TenantId $tenantId -SubId $subId -ResourceGroup $rg.Name `
         -Account $aiAccount -Project $project -Models $models `
-        -Search $search -Bing $bing -ApiKey $apiKey
+        -Search $search -Bing $bing -ApiKey $apiKey -ServicePrincipal $sp
 
     Write-Host ""
     Write-Host "╔════════════════════════════════════════════════════════════════╗" -ForegroundColor Green

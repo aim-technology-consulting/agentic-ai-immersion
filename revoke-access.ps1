@@ -218,3 +218,27 @@ if ($failed.Count -gt 0) {
 }
 
 Write-Host ""
+
+# ---------------------------------------------------------------------------
+# 7. Delete workshop Service Principal (if one was created)
+# ---------------------------------------------------------------------------
+$clientId = $env['AZURE_CLIENT_ID']
+if (-not [string]::IsNullOrWhiteSpace($clientId)) {
+    Write-Step "Workshop Service Principal detected..."
+    Write-Host "  App ID: $clientId" -ForegroundColor Cyan
+    $deleteSp = Read-Host "  Delete the workshop Service Principal now? (y/n)"
+    if ($deleteSp -match "^[Yy]$") {
+        try {
+            Invoke-Az @("ad", "app", "delete", "--id", $clientId) | Out-Null
+            Write-Success "Service Principal deleted: $clientId"
+        }
+        catch {
+            Write-Err "Could not delete SP $clientId — delete it manually: az ad app delete --id $clientId"
+        }
+    }
+    else {
+        Write-Warn "SP not deleted. Run manually when ready: az ad app delete --id $clientId"
+    }
+}
+
+Write-Host ""
