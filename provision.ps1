@@ -944,8 +944,10 @@ function Test-ModelQuota {
     }
     else {
         Write-Warn "$($issues.Count) model(s) have < $needed units available (needed per deployment)."
+        Write-Host "  You can still continue — the model selection step will let you pick" -ForegroundColor White
+        Write-Host "  an alternative (e.g. gpt-4o-mini) that has sufficient quota above." -ForegroundColor White
         Write-Host ""
-        Write-Host "  To request a quota increase:" -ForegroundColor White
+        Write-Host "  To request a quota increase instead:" -ForegroundColor White
         Write-Host "    https://aka.ms/oai/quotaincrease" -ForegroundColor DarkCyan
         Write-Host "  Or via Azure portal:" -ForegroundColor White
         Write-Host "    https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/QuotaRequestV2" -ForegroundColor DarkCyan
