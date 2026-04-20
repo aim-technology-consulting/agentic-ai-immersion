@@ -351,15 +351,24 @@ function New-AIServicesAccount {
             Invoke-AzRestWithRetry -Method "PUT" -Url $accountUrl -Body $accountBody -ApiVersion $accountApiVersion -MaxRetries 8 -InitialDelaySeconds 5 | Out-Null
         }
         catch {
-            if ($_.Exception.Message -match "FlagMustBeSetForRestore") {
-                Write-Warn "Soft-deleted account found — purging before recreating..."
+            if ($_.Exception.Message -notmatch "FlagMustBeSetForRestore") { throw }
+
+            # Account is soft-deleted — wait 5s and try once more before forcing purge
+            Write-Warn "Soft-deleted account detected — waiting 5s and retrying once..."
+            Start-Sleep 5
+            try {
+                Invoke-AzRestWithRetry -Method "PUT" -Url $accountUrl -Body $accountBody -ApiVersion $accountApiVersion -MaxRetries 2 -InitialDelaySeconds 3 | Out-Null
+            }
+            catch {
+                if ($_.Exception.Message -notmatch "FlagMustBeSetForRestore") { throw }
+
+                Write-Warn "Still soft-deleted — force purging..."
                 Invoke-Az @("cognitiveservices", "account", "purge",
                     "--location", $Location, "--resource-group", $ResourceGroup,
                     "--name", $name, "--subscription", $SubId) | Out-Null
-                Write-Success "Purged soft-deleted account — retrying creation..."
-                Invoke-AzRestWithRetry -Method "PUT" -Url $accountUrl -Body $accountBody -ApiVersion $accountApiVersion -MaxRetries 8 -InitialDelaySeconds 5 | Out-Null
+                Write-Success "Purged — recreating account..."
+                Invoke-AzRestWithRetry -Method "PUT" -Url $accountUrl -Body $accountBody -ApiVersion $accountApiVersion -MaxRetries 4 -InitialDelaySeconds 5 | Out-Null
             }
-            else { throw }
         }
     }
 
