@@ -351,15 +351,24 @@ function New-AIServicesAccount {
             Invoke-AzRestWithRetry -Method "PUT" -Url $accountUrl -Body $accountBody -ApiVersion $accountApiVersion -MaxRetries 8 -InitialDelaySeconds 5 | Out-Null
         }
         catch {
-            if ($_.Exception.Message -match "FlagMustBeSetForRestore") {
-                Write-Warn "Soft-deleted account found — purging before recreating..."
+            if ($_.Exception.Message -notmatch "FlagMustBeSetForRestore") { throw }
+
+            # Account is soft-deleted — wait 5s and try once more before forcing purge
+            Write-Warn "Soft-deleted account detected — waiting 5s and retrying once..."
+            Start-Sleep 5
+            try {
+                Invoke-AzRestWithRetry -Method "PUT" -Url $accountUrl -Body $accountBody -ApiVersion $accountApiVersion -MaxRetries 2 -InitialDelaySeconds 3 | Out-Null
+            }
+            catch {
+                if ($_.Exception.Message -notmatch "FlagMustBeSetForRestore") { throw }
+
+                Write-Warn "Still soft-deleted — force purging..."
                 Invoke-Az @("cognitiveservices", "account", "purge",
                     "--location", $Location, "--resource-group", $ResourceGroup,
                     "--name", $name, "--subscription", $SubId) | Out-Null
-                Write-Success "Purged soft-deleted account — retrying creation..."
-                Invoke-AzRestWithRetry -Method "PUT" -Url $accountUrl -Body $accountBody -ApiVersion $accountApiVersion -MaxRetries 8 -InitialDelaySeconds 5 | Out-Null
+                Write-Success "Purged — recreating account..."
+                Invoke-AzRestWithRetry -Method "PUT" -Url $accountUrl -Body $accountBody -ApiVersion $accountApiVersion -MaxRetries 4 -InitialDelaySeconds 5 | Out-Null
             }
-            else { throw }
         }
     }
 
@@ -817,13 +826,98 @@ function New-WorkshopServicePrincipal {
 }
 
 # ---------------------------------------------------------------------------
+# STEP 9 — Foundry MCP Server connection (portal-guided, confirmed by script)
+# ---------------------------------------------------------------------------
+function Get-McpConnection {
+    param(
+        [string]$ProjectResourceId,
+        [string]$TenantId,
+        [string]$ProjectName
+    )
+
+    Write-Step "Foundry MCP Server connection..."
+
+    $knownName  = "FoundryMCPServerpreview"
+    $apiVersion = "2025-04-01-preview"
+    $mgmtUrl    = "https://management.azure.com$ProjectResourceId/connections/$knownName"
+
+    # Check if connection already exists
+    $existing = try {
+        $raw = az rest --method GET --url $mgmtUrl `
+            --url-parameters "api-version=$apiVersion" -o json 2>$null
+        $raw | ConvertFrom-Json
+    } catch { $null }
+
+    if ($existing -and "$($existing.id)".Trim()) {
+        Write-Success "MCP connection already exists."
+        return @{ ConnectionId = "$($existing.id)".Trim() }
+    }
+
+    # Not found — guide the implementer through the portal
+    $encodedId  = [Uri]::EscapeDataString($ProjectResourceId)
+    $portalUrl  = "https://ai.azure.com/build/tools?wsid=$encodedId&tid=$TenantId"
+
+    Write-Host ""
+    Write-Host "  ┌──────────────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
+    Write-Host "  │  MANUAL STEP REQUIRED — Foundry MCP Server Connection            │" -ForegroundColor Cyan
+    Write-Host "  │  This connection cannot yet be created via CLI (preview API gap). │" -ForegroundColor Cyan
+    Write-Host "  └──────────────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Open this URL in your browser (project Tools page):" -ForegroundColor White
+    Write-Host ""
+    Write-Host "    $portalUrl" -ForegroundColor DarkCyan
+    Write-Host ""
+    Write-Host "  Then follow these steps:" -ForegroundColor White
+    Write-Host ""
+    Write-Host "    1. Click  'Build'  in the top navigation menu" -ForegroundColor White
+    Write-Host "       then click the  Tools  icon (screwdriver & wrench) in the left nav" -ForegroundColor White
+    Write-Host "    2. Click  [ + Add tool ]  in the toolbar" -ForegroundColor White
+    Write-Host "    3. In the panel that opens, click  [ Catalog ]" -ForegroundColor White
+    Write-Host "    4. In the search box type:  Foundry MCP Server" -ForegroundColor White
+    Write-Host "    5. Select  'Foundry MCP Server (preview)'  from the results" -ForegroundColor White
+    Write-Host "    6. An Authentication dialog appears — leave defaults as-is:" -ForegroundColor White
+    Write-Host "         OAuth Provider : Managed  (Microsoft managed OAuth app)" -ForegroundColor DarkGray
+    Write-Host "         Audience       : https://mcp.ai.azure.com  (pre-filled, do not change)" -ForegroundColor DarkGray
+    Write-Host "       Click  [ Connect ]  to confirm" -ForegroundColor White
+    Write-Host "    7. After connecting you land on the tool page — the connection name" -ForegroundColor White
+    Write-Host "       appears in bold at the very top next to the purple Foundry icon" -ForegroundColor White
+    Write-Host "       (it will look like:  FoundryMCPServerpreview)" -ForegroundColor DarkGray
+    Write-Host "    8. Copy that name" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Press Enter here once the connection has been created." -ForegroundColor Yellow
+    Read-Host "  [ Enter to continue ]" | Out-Null
+
+    $inputName = Read-Host "  Paste the connection name from the portal (Enter for '$knownName')"
+    $connName  = if ([string]::IsNullOrWhiteSpace($inputName)) { $knownName } else { $inputName.Trim() }
+
+    # Verify the connection exists
+    Write-Host "  Verifying '$connName'..." -ForegroundColor DarkGray
+    $verifyUrl = "https://management.azure.com$ProjectResourceId/connections/$connName"
+    $verified  = try {
+        $raw = az rest --method GET --url $verifyUrl `
+            --url-parameters "api-version=$apiVersion" -o json 2>$null
+        $raw | ConvertFrom-Json
+    } catch { $null }
+
+    if ($verified -and "$($verified.id)".Trim()) {
+        $connId = "$($verified.id)".Trim()
+        Write-Success "Verified: $connId"
+        return @{ ConnectionId = $connId }
+    }
+
+    Write-Warn "Could not verify '$connName' — connection may not exist yet or the name is incorrect."
+    Write-Warn "Writing constructed ID to .env. Rerun or edit FOUNDRY_MCP_CONNECTION_ID manually after creating it."
+    return @{ ConnectionId = "$ProjectResourceId/connections/$connName" }
+}
+
+# ---------------------------------------------------------------------------
 # STEP 9 — Write .env
 # ---------------------------------------------------------------------------
 function Write-EnvFile {
     param(
         [string]$TenantId, [string]$SubId, [string]$ResourceGroup,
         [hashtable]$Account, [hashtable]$Project, [hashtable]$Models,
-        [hashtable]$Search, [hashtable]$Bing,
+        [hashtable]$Search, [hashtable]$Bing, [hashtable]$Mcp,
         [string]$ApiKey,
         [hashtable]$ServicePrincipal = $null
     )
@@ -884,7 +978,7 @@ AZURE_SEARCH_INDEX_NAME=$($Search.IndexName)
 # =============================================================================
 # MCP TOOLS
 # =============================================================================
-FOUNDRY_MCP_CONNECTION_ID=<your-mcp-connection-id>
+FOUNDRY_MCP_CONNECTION_ID=$($Mcp.ConnectionId)
 
 # =============================================================================
 # OBSERVABILITY & TRACING
@@ -959,6 +1053,11 @@ function Main {
         -ResourceGroup $rg.Name -Location $rg.Location `
         -SubId $subId -ProjectResourceId $project.ResourceId
 
+    $mcp = Get-McpConnection `
+        -ProjectResourceId $project.ResourceId `
+        -TenantId $tenantId `
+        -ProjectName $project.Name
+
     Set-WorkshopRbac `
         -SubId $subId -ResourceGroup $rg.Name `
         -ProjectManagedIdentityPrincipalId $project.ManagedIdentityPrincipalId
@@ -971,7 +1070,7 @@ function Main {
     Write-EnvFile `
         -TenantId $tenantId -SubId $subId -ResourceGroup $rg.Name `
         -Account $aiAccount -Project $project -Models $models `
-        -Search $search -Bing $bing -ApiKey $apiKey -ServicePrincipal $sp
+        -Search $search -Bing $bing -Mcp $mcp -ApiKey $apiKey -ServicePrincipal $sp
 
     Write-Host ""
     Write-Host "╔════════════════════════════════════════════════════════════════╗" -ForegroundColor Green
