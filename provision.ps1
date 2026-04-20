@@ -688,15 +688,7 @@ function New-SearchService {
 function New-BingConnection {
     param([string]$ResourceGroup, [string]$Location, [string]$SubId, [string]$ProjectResourceId)
 
-    Write-Step "Bing Search grounding (optional)..."
-    $include = Read-Host "  Create a Bing Search resource and connection? (Y/n)"
-    if ($include -match "^[Nn]$") {
-        Write-Warn "Skipping Bing Search"
-        return @{
-            ConnectionName = "<your-bing-connection-name>"
-            ConnectionId   = "<your-bing-connection-id>"
-        }
-    }
+    Write-Step "Bing Search grounding (required)..."
 
     $default = "$ResourceGroup-bing"
     $name = Read-Host "  Bing resource name (Enter for '$default')"
