@@ -634,9 +634,9 @@ function Initialize-SearchIndex {
                 [ordered]@{
                     name = "salary-semantic"
                     prioritizedFields = [ordered]@{
-                        titleField                = [ordered]@{ fieldName = "job_title" }
-                        prioritizedContentFields  = @([ordered]@{ fieldName = "description" })
-                        prioritizedKeywordsFields = @(
+                        titleField    = [ordered]@{ fieldName = "job_title" }
+                        contentFields = @([ordered]@{ fieldName = "description" })
+                        keywordsFields = @(
                             [ordered]@{ fieldName = "skills" },
                             [ordered]@{ fieldName = "title_equivalents" },
                             [ordered]@{ fieldName = "job_family" }
@@ -653,9 +653,9 @@ function Initialize-SearchIndex {
     $delay = 10
     for ($attempt = 1; $attempt -le 10; $attempt++) {
         try {
-            $indexUrl = $Endpoint + "/indexes/" + $IndexName + "?api-version=" + $apiVersion
-            $null = Invoke-RestMethod -Method PUT -ErrorAction Stop `
-                -Uri $indexUrl -Headers $headers -Body $schemaJson
+            $null = Invoke-RestMethod -Method PUT `
+                -Uri "$Endpoint/indexes/$($IndexName)?api-version=$apiVersion" `
+                -Headers $headers -Body $schemaJson
             Write-Success "Index '$IndexName' created with semantic configuration"
             break
         }
@@ -686,9 +686,9 @@ function Initialize-SearchIndex {
     $batchJson = (@{ value = $actions } | ConvertTo-Json -Depth 10 -Compress)
 
     Write-Host "  Uploading $($docs.Count) documents..." -ForegroundColor DarkGray
-    $uploadUrl = $Endpoint + "/indexes/" + $IndexName + "/docs/index?api-version=" + $apiVersion
-    $result = Invoke-RestMethod -Method POST -ErrorAction Stop `
-        -Uri $uploadUrl -Headers $headers -Body $batchJson
+    $result = Invoke-RestMethod -Method POST `
+        -Uri "$Endpoint/indexes/$($IndexName)/docs/index?api-version=$apiVersion" `
+        -Headers $headers -Body $batchJson
 
     $ok   = ($result.value | Where-Object { $_.status -eq $true }).Count
     $fail = ($result.value | Where-Object { $_.status -ne $true }).Count
