@@ -26,28 +26,29 @@ echo "==> Building image: ${IMAGE}:${TAG}"
 echo "    Context: ${SCRIPT_DIR}"
 echo "    Dockerfile: ${SCRIPT_DIR}/.devcontainer/Dockerfile"
 
+# Collect tags
+TAGS=("-t" "${IMAGE}:${TAG}")
+if [ "${TAG}" != "latest" ]; then
+    TAGS+=("-t" "${IMAGE}:latest")
+fi
+
+# Determine push flag
+PUSH_FLAG=""
+if [ "${DRY_RUN:-0}" != "1" ]; then
+    PUSH_FLAG="--push"
+fi
+
 # Build from repo root so COPY requirements.txt works
-docker build \
+# Use buildx to produce a multi-arch image (amd64 + arm64)
+docker buildx build \
+    --platform linux/amd64,linux/arm64 \
     -f "${SCRIPT_DIR}/.devcontainer/Dockerfile" \
-    -t "${IMAGE}:${TAG}" \
+    "${TAGS[@]}" \
+    ${PUSH_FLAG} \
     "${SCRIPT_DIR}"
 
-# Also tag as latest if a version tag was provided
-if [ "${TAG}" != "latest" ]; then
-    docker tag "${IMAGE}:${TAG}" "${IMAGE}:latest"
-fi
-
 if [ "${DRY_RUN:-0}" = "1" ]; then
-    echo "==> DRY_RUN set, skipping push"
-    exit 0
+    echo "==> DRY_RUN set, built but did not push"
+else
+    echo "==> Done! Image pushed: ${IMAGE}:${TAG}"
 fi
-
-echo "==> Pushing ${IMAGE}:${TAG}"
-docker push "${IMAGE}:${TAG}"
-
-if [ "${TAG}" != "latest" ]; then
-    echo "==> Pushing ${IMAGE}:latest"
-    docker push "${IMAGE}:latest"
-fi
-
-echo "==> Done! Image pushed: ${IMAGE}:${TAG}"
