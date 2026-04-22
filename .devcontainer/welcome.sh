@@ -34,5 +34,3 @@ fi
 echo ""
 echo "  Ready. Try: python --version | jupyter notebook"
 echo ""
-
-exec bash -l
