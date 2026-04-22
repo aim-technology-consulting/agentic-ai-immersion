@@ -1,8 +1,4 @@
 {
     "python.defaultInterpreterPath": "/usr/local/bin/python",
-    "jupyter.defaultKernel": "python3",
-    "jupyter.kernelProviderSettings": {
-        "ms-toolsai.jupyter-kernelProviders": {}
-    },
-    "notebook.kernelPickerType": "all"
+    "jupyter.askForKernelRestart": false
 }
