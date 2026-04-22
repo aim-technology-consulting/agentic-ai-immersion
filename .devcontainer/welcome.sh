@@ -1,4 +1,10 @@
 #!/bin/bash
+# Wait for VS Code to finish attaching before printing (avoids output being dropped on Windows)
+for i in $(seq 1 20); do
+    [ -f /tmp/.vscode-attached ] && break
+    sleep 0.25
+done
+
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║          Agentic AI Immersion Day                            ║"
@@ -21,7 +27,7 @@ fi
 if [ -z "$AZURE_CLIENT_ID" ] || [ -z "$AZURE_CLIENT_SECRET" ] || [ -z "$AZURE_TENANT_ID" ]; then
     echo "  Auth    : ✗ AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID not set in .env"
 else
-    RESULT=$(curl -s -X POST \
+    RESULT=$(curl -s --connect-timeout 2 --max-time 8 -X POST \
       "https://login.microsoftonline.com/$AZURE_TENANT_ID/oauth2/v2.0/token" \
       -d "grant_type=client_credentials&client_id=$AZURE_CLIENT_ID&client_secret=$AZURE_CLIENT_SECRET&scope=https://cognitiveservices.azure.com/.default")
 

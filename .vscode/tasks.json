@@ -5,9 +5,6 @@
             "label": "Workshop Welcome",
             "type": "shell",
             "command": "bash -l ${workspaceFolder}/.devcontainer/welcome.sh",
-            "runOptions": {
-                "runOn": "folderOpen"
-            },
             "presentation": {
                 "reveal": "always",
                 "panel": "new",

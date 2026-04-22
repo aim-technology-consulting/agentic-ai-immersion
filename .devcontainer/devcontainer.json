@@ -30,7 +30,7 @@
             }
         }
     },
-    "postAttachCommand": "bash .devcontainer/on-attach.sh",
+    "postAttachCommand": "bash ${containerWorkspaceFolder}/.devcontainer/on-attach.sh",
     "containerEnv": {
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONUNBUFFERED": "1",
