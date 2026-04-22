@@ -15,6 +15,7 @@
                 "jupyter.askForKernelRestart": false,
                 "jupyter.kernelProviderSettings": {},
                 "notebook.kernelPickerType": "all",
+                "jupyter.defaultKernel": "Python 3",
                 "editor.formatOnSave": true,
                 "python.formatting.provider": "none",
                 "[python]": {
@@ -30,7 +31,7 @@
             }
         }
     },
-    "postAttachCommand": "bash ${containerWorkspaceFolder}/.devcontainer/on-attach.sh",
+    "postAttachCommand": "python -m ipykernel install --user --name python3 --display-name 'Python 3' && bash ${containerWorkspaceFolder}/.devcontainer/on-attach.sh",
     "containerEnv": {
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONUNBUFFERED": "1",

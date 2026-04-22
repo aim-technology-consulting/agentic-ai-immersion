@@ -9,6 +9,7 @@ __pycache__/
 .claude/
 .vscode/*
 !.vscode/tasks.json
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo
@@ -138,6 +139,7 @@ ENV/
 # =============================================================================
 .vscode/*
 !.vscode/tasks.json
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo
