@@ -48,5 +48,8 @@
             "label": "Jupyter",
             "onAutoForward": "notify"
         }
+    },
+    "otherPortsAttributes": {
+        "onAutoForward": "ignore"
     }
 }
