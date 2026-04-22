@@ -13,19 +13,26 @@ fi
 echo "  Az CLI  : ${AZ_CLI_VERSION}"
 echo ""
 
-if ! az account show > /dev/null 2>&1; then
-    echo "  Signing in to Azure — a browser window will open..."
-    echo ""
-    az login
-    echo ""
+ENV_FILE="$(cd "$(dirname "$0")/.." && pwd)/.env"
+if [ -f "$ENV_FILE" ]; then
+    set -a; source "$ENV_FILE"; set +a
 fi
 
-ACCT_NAME=$(az account show --query "name" -o tsv 2>/dev/null)
-ACCT_USER=$(az account show --query "user.name" -o tsv 2>/dev/null)
-echo "  Azure subscription : $ACCT_NAME"
-echo "  Signed in as       : $ACCT_USER"
+if [ -z "$AZURE_CLIENT_ID" ] || [ -z "$AZURE_CLIENT_SECRET" ] || [ -z "$AZURE_TENANT_ID" ]; then
+    echo "  Auth    : ✗ AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID not set in .env"
+else
+    RESULT=$(curl -s -X POST \
+      "https://login.microsoftonline.com/$AZURE_TENANT_ID/oauth2/v2.0/token" \
+      -d "grant_type=client_credentials&client_id=$AZURE_CLIENT_ID&client_secret=$AZURE_CLIENT_SECRET&scope=https://cognitiveservices.azure.com/.default")
+
+    if echo "$RESULT" | python3 -c "import sys,json; sys.exit(0 if 'access_token' in json.load(sys.stdin) else 1)" 2>/dev/null; then
+        echo "  Auth    : ✓ Service Principal authenticated"
+    else
+        echo "  Auth    : ✗ Service Principal auth failed — check credentials in .env"
+    fi
+fi
 echo ""
-echo "  Ready. Try: python --version | az account show | jupyter notebook"
+echo "  Ready. Try: python --version | jupyter notebook"
 echo ""
 
 exec bash -l
