@@ -1,0 +1,9 @@
+# Normalize text files in a predictable way across platforms.
+* text=auto
+
+# Linux/devcontainer scripts must always use LF.
+*.sh text eol=lf
+Dockerfile text eol=lf
+
+# Keep Windows PowerShell scripts in CRLF for native Windows UX.
+*.ps1 text eol=crlf

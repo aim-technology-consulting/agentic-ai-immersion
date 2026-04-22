@@ -6,7 +6,11 @@ echo "╚═══════════════════════�
 echo ""
 echo "  User    : $(whoami)"
 echo "  Python  : $(python --version 2>&1)"
-echo "  Az CLI  : $(az version --query '\"azure-cli\"' -o tsv 2>/dev/null)"
+AZ_CLI_VERSION="$(az version --query '"azure-cli"' -o tsv 2>/dev/null || true)"
+if [ -z "$AZ_CLI_VERSION" ]; then
+    AZ_CLI_VERSION="not available"
+fi
+echo "  Az CLI  : ${AZ_CLI_VERSION}"
 echo ""
 
 if ! az account show > /dev/null 2>&1; then
